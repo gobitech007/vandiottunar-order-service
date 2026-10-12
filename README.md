@@ -1,0 +1,85 @@
+# Vandi Ottunar — Order Service
+
+FastAPI service for **customer bookings** and **driver assignment**:
+
+- Customers (car owners and businesses) say **when** they need a driver (start date and time, optional end date), their **car number** and where to pick up.
+- Admins assign a driver **manually** (from a ranked list) or **automatically** (one booking or all waiting bookings at once).
+- Drivers see their assigned customers; customers see their assigned driver.
+
+It has its own database (`vandi_orders`) and reads drivers and customers from the [user-service](https://github.com/gobitech007/vandiottunar-user-service) through its `/internal` API. It doesn't issue logins: it trusts the user-service's tokens, so both services must share the same `JWT_SECRET`.
+
+```
+browser / app ──login──▶ user-service (8000) ──token──┐
+       │                                              │ same JWT_SECRET
+       └────── bookings, assignments ──▶ order-service (8001)
+                                              │ X-Service-Token (SERVICE_TOKEN)
+                                              └──▶ user-service /internal/drivers, /internal/users/{id}
+```
+
+## How a driver is chosen
+
+A driver is **eligible** for a booking when:
+
+1. They are **approved** in the user-service.
+2. Their **licence covers the vehicle**: a two-wheeler needs MCWG/MCWOG, a car needs LMV (or a heavy class), and a heavy vehicle needs HMV/HGMV/HPMV/HTV and similar. Classes are read from the licence photo and checked by an admin.
+3. They want **this kind of work**: trips (`on_demand`) or a permanent job (`job`).
+4. They are **free**: no other assigned booking overlaps. A trip with no end time blocks `DEFAULT_TRIP_HOURS` (12 h). A permanent job with no end date blocks them from then on.
+
+Eligible drivers are ranked by:
+- being inside their service radius,
+- distance from the pickup point (when both sides have GPS),
+- pincode closeness (same pincode, then same first 4 digits, then same first 3),
+- fewest upcoming bookings, so work is spread out.
+
+**Auto-assign** gives the booking to the top eligible driver. **Manual assign** lets the admin pick anyone eligible; the same rules are re-checked before saving. Assignments lock per driver, so two admins can't double-book the same person at the same time.
+
+## Run locally (Windows / PowerShell)
+
+1. In pgAdmin, create an empty database **`vandi_orders`** on the same PostgreSQL server as `vandi_users`.
+2. Set up the service:
+   ```powershell
+   cd vandiottunar-order-service
+   copy .env.example .env      # set DATABASE_URL password, and the SAME JWT_SECRET + SERVICE_TOKEN as the user-service
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   python -m pip install -r requirements-dev.txt
+   python -m alembic upgrade head
+   python -m uvicorn app.main:app --reload --port 8001
+   ```
+3. Make sure the user-service's `.env` has the same `SERVICE_TOKEN`, then restart it.
+
+API docs: http://localhost:8001/docs
+
+## API
+
+| Method | Path | Who | What |
+|---|---|---|---|
+| POST | `/bookings` | customer / employer | Create a booking: `start_at`, optional `end_at`, `car_number` (defaults to profile), `booking_type` (`on_demand` / `job`), `vehicle_class` (`two_wheeler` / `four_wheeler` / `heavy`), pickup address, pincode and optional GPS |
+| GET | `/bookings` | customer / employer | My bookings, with the assigned driver's name and phone |
+| POST | `/bookings/{id}/cancel` | customer / employer | Cancel |
+| GET | `/driver/bookings` | driver | My assigned customers: name, phone, company, car number, pickup, dates |
+| POST | `/driver/bookings/{id}/complete` | driver | Mark a started booking done |
+| GET | `/admin/bookings?status=&q=` | admin | List / search |
+| GET | `/admin/bookings/summary` | admin | Counts by status |
+| GET | `/admin/bookings/{id}/candidates` | admin | All approved drivers ranked, with reasons when one can't take it |
+| POST | `/admin/bookings/{id}/assign` | admin | Manual assign `{driver_user_id}` |
+| POST | `/admin/bookings/{id}/auto-assign` | admin | Auto-assign this booking |
+| POST | `/admin/bookings/auto-assign` | admin | Auto-assign every waiting booking, soonest first |
+| POST | `/admin/bookings/{id}/unassign` | admin | Take the driver off |
+| POST | `/admin/bookings/{id}/cancel` / `complete` | admin | Cancel / complete |
+
+Times without an offset (as browsers send them from a date-time field) are read as India time (`TIMEZONE`).
+
+## Tests
+
+```bash
+pytest                                              # SQLite
+TEST_DATABASE_URL=postgresql+asyncpg://... pytest   # PostgreSQL
+```
+
+The tests swap the user-service for an in-memory directory, so they run on their own.
+
+## Notes
+
+- Customer and driver contact details are **copied onto the booking** when it is made or assigned, so dashboards work even if the user-service is briefly down. A later name or phone change shows on new bookings.
+- Tokens are checked by signature only. A driver or customer blocked in the user-service can still reach this service until their token expires, but booking creation re-checks that the account is active.

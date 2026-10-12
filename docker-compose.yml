@@ -1,0 +1,14 @@
+# Runs the order-service API in Docker against the PostgreSQL on your machine.
+# The user-service must also be running (USER_SERVICE_URL).
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # Inside Docker, "localhost" is the container; reach your machine through host.docker.internal
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@host.docker.internal:5432/vandi_orders}
+      USER_SERVICE_URL: ${DOCKER_USER_SERVICE_URL:-http://host.docker.internal:8000}
+    ports:
+      - "8001:8001"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
