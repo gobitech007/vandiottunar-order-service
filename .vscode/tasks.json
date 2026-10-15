@@ -1,0 +1,68 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Order service: migrate database",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "alembic",
+        "upgrade",
+        "head"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "group": "vandi"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Order service: start (port 8001)",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8001"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": "Order service: migrate database",
+      "isBackground": true,
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "vandi"
+      },
+      "problemMatcher": {
+        "owner": "uvicorn",
+        "pattern": {
+          "regexp": "^__never__$"
+        },
+        "background": {
+          "activeBegins": true,
+          "beginsPattern": "Will watch for changes|Started reloader process",
+          "endsPattern": "Application startup complete"
+        }
+      }
+    }
+  ]
+}
