@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     environment: str = "development"  # development | production
     auto_create_tables: bool = False  # dev convenience; use Alembic in real deployments
 
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/vandi_orders"
+    database_url: str = "postgresql+asyncpg://postgres:admin@localhost:5432/vandi_orders"
 
     # Must be the SAME secret as the user-service: this service trusts its login tokens
     jwt_secret: str = "change-me"
