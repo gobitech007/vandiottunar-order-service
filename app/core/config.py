@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     default_trip_hours: int = 12  # an on-demand booking without an end time blocks the driver this long
     max_days_ahead: int = 90
     auto_assign_on_create: bool = False  # try to assign a driver as soon as a booking is created
+    start_early_minutes: int = 120  # how long before the booked time the driver may start the trip
+    code_max_attempts: int = 5  # wrong trip codes before the code is changed
+    location_keep_days: int = 90  # GPS points older than this are deleted (python -m app.purge_locations)
 
     cors_origins: str = "http://localhost:5173"
 

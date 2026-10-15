@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import Caller
 from app.core.config import get_settings
 from app.core.users import DriverInfo, UserDirectory
-from app.models import ACTIVE_STATUSES, Booking, BookingEvent, BookingStatus, BookingType
+from app.models import ACTIVE_STATUSES, BUSY_STATUSES, Booking, BookingEvent, BookingStatus, BookingType
 from app.schemas import BookingCreate
 from app.services import matching
 from app.timeutil import as_utc, local_to_utc, utcnow
@@ -95,13 +95,13 @@ async def create_booking(session: AsyncSession, caller: Caller, body: BookingCre
 
 
 async def busy_map(session: AsyncSession, driver_user_ids: list[str]) -> dict[str, list[Booking]]:
-    """Active (assigned) bookings per driver."""
+    """Bookings that keep each driver busy (assigned or on a trip)."""
     if not driver_user_ids:
         return {}
     rows = (
         await session.scalars(
             select(Booking).where(
-                Booking.driver_user_id.in_(driver_user_ids), Booking.status == BookingStatus.assigned
+                Booking.driver_user_id.in_(driver_user_ids), Booking.status.in_(BUSY_STATUSES)
             )
         )
     ).all()
@@ -163,6 +163,8 @@ async def _assign_locked(session: AsyncSession, booking: Booking, driver: Driver
             assignment_mode=mode,
             assigned_at=now,
             assigned_by=actor.user_id,
+            start_code=f"{secrets.randbelow(10_000):04d}",
+            code_attempts=0,
             updated_at=now,
         )
     )
@@ -203,6 +205,8 @@ async def unassign(session: AsyncSession, booking: Booking, actor: Caller, note:
     booking.assignment_mode = None
     booking.assigned_at = None
     booking.assigned_by = None
+    booking.start_code = None  # the next driver gets a new code
+    booking.code_attempts = 0
     event(session, booking, actor, "unassigned", note or f"was {previous}")
     await session.commit()
     return booking
@@ -220,12 +224,14 @@ async def cancel(session: AsyncSession, booking: Booking, actor: Caller, by: str
 
 
 async def complete(session: AsyncSession, booking: Booking, actor: Caller) -> Booking:
-    if booking.status != BookingStatus.assigned:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Only assigned bookings can be completed")
-    if as_utc(booking.start_at) > utcnow():
+    """Admin override: finish a booking without the end code (e.g. the driver's phone died)."""
+    if booking.status not in BUSY_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Only assigned or running bookings can be completed")
+    if as_utc(booking.start_at) > utcnow() and booking.status == BookingStatus.assigned:
         raise HTTPException(status.HTTP_409_CONFLICT, "This booking hasn't started yet")
     booking.status = BookingStatus.completed
     booking.completed_at = utcnow()
-    event(session, booking, actor, "completed")
+    booking.start_code = booking.end_code = None
+    event(session, booking, actor, "completed", "by admin, without the end code")
     await session.commit()
     return booking

@@ -83,3 +83,15 @@ The tests swap the user-service for an in-memory directory, so they run on their
 
 - Customer and driver contact details are **copied onto the booking** when it is made or assigned, so dashboards work even if the user-service is briefly down. A later name or phone change shows on new bookings.
 - Tokens are checked by signature only. A driver or customer blocked in the user-service can still reach this service until their token expires, but booking creation re-checks that the account is active.
+
+## Trips: start code, end code, live location
+
+1. When a driver is assigned, the customer's booking shows a **4-digit start code**. The driver can't see it.
+2. When the driver arrives, the customer reads it out and the driver enters it: `POST /driver/bookings/{id}/start` (`{"code", "lat", "lng"}`). The booking becomes `in_progress`; the driver can start up to `START_EARLY_MINUTES` before the booked time.
+3. The customer now sees an **end code**. The driver's phone sends GPS points (`POST /driver/bookings/{id}/location`, batches of up to 200 so points saved without signal arrive later). Points are only accepted between the two codes.
+4. The customer (`GET /bookings/{id}/track`) and admin (`GET /admin/bookings/{id}/track`) see the latest position, the route and the distance driven (GPS jitter and impossible jumps are ignored).
+5. At the end, the driver enters the end code: `POST /driver/bookings/{id}/end`. Sharing stops.
+
+After `CODE_MAX_ATTEMPTS` wrong codes the code is replaced (the customer's screen shows the new one). An admin can finish a running trip without the code (`POST /admin/bookings/{id}/complete`) if the driver's phone dies. Run `python -m app.purge_locations` daily (cron / Task Scheduler) to delete GPS points older than `LOCATION_KEEP_DAYS`.
+
+Run `python -m alembic upgrade head` after pulling.

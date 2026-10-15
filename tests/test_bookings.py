@@ -139,8 +139,8 @@ async def test_cancel_and_complete(client, directory):
     directory.drivers = [driver("d-1", "Only Driver")]
     b = (await book(client)).json()
     await client.post(f"/admin/bookings/{b['id']}/auto-assign", headers=ADMIN)
-    # Can't complete before it starts
-    r = await client.post(f"/driver/bookings/{b['id']}/complete", headers=token("d-1", "driver"))
+    # Can't start a trip that is a day away
+    r = await client.post(f"/driver/bookings/{b['id']}/start", json={"code": "0000"}, headers=token("d-1", "driver"))
     assert r.status_code == 409
     r = await client.post(f"/bookings/{b['id']}/cancel", json={"reason": "Plans changed"}, headers=CUSTOMER)
     assert r.json()["status"] == "cancelled"
@@ -155,7 +155,7 @@ async def test_admin_list_and_summary(client, directory):
     data = (await client.get("/admin/bookings?status=pending&q=kovai", headers=ADMIN)).json()
     assert data["total"] == 1 and data["items"][0]["company_name"] == "Kovai Logistics"
     s = (await client.get("/admin/bookings/summary", headers=ADMIN)).json()
-    assert s["by_status"] == {"pending": 2, "assigned": 0, "completed": 0, "cancelled": 0}
+    assert s["by_status"] == {"pending": 2, "assigned": 0, "in_progress": 0, "completed": 0, "cancelled": 0}
 
 
 async def test_unknown_or_inactive_customer(client, directory):

@@ -7,8 +7,9 @@ from app.core.config import get_settings
 from app.core.users import UserDirectory, get_directory
 from app.db import get_session
 from app.models import Booking
-from app.schemas import BookingCreate, BookingOut, CancelIn
+from app.schemas import BookingCreate, CancelIn, CustomerBookingOut, TrackOut
 from app.services import bookings as svc
+from app.services import trips
 
 router = APIRouter(prefix="/bookings", tags=["customer bookings"])
 
@@ -20,7 +21,7 @@ async def _own_booking(session: AsyncSession, booking_id: str, caller: Caller) -
     return booking
 
 
-@router.post("", response_model=BookingOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CustomerBookingOut, status_code=status.HTTP_201_CREATED)
 async def create(
     body: BookingCreate,
     caller: Caller = Depends(customer_only),
@@ -33,20 +34,33 @@ async def create(
     return booking
 
 
-@router.get("", response_model=list[BookingOut])
+@router.get("", response_model=list[CustomerBookingOut])
 async def my_bookings(caller: Caller = Depends(customer_only), session: AsyncSession = Depends(get_session)):
-    rows = await session.scalars(
-        select(Booking).where(Booking.customer_user_id == caller.user_id).order_by(Booking.start_at.desc()).limit(100)
-    )
-    return rows.all()
+    rows = (
+        await session.scalars(
+            select(Booking).where(Booking.customer_user_id == caller.user_id).order_by(Booking.start_at.desc()).limit(100)
+        )
+    ).all()
+    if any([trips.ensure_start_code(b) for b in rows]):
+        await session.commit()
+    return rows
 
 
-@router.get("/{booking_id}", response_model=BookingOut)
+@router.get("/{booking_id}", response_model=CustomerBookingOut)
 async def get_one(booking_id: str, caller: Caller = Depends(customer_only), session: AsyncSession = Depends(get_session)):
-    return await _own_booking(session, booking_id, caller)
+    booking = await _own_booking(session, booking_id, caller)
+    if trips.ensure_start_code(booking):
+        await session.commit()
+    return booking
 
 
-@router.post("/{booking_id}/cancel", response_model=BookingOut)
+@router.get("/{booking_id}/track", response_model=TrackOut)
+async def track(booking_id: str, caller: Caller = Depends(customer_only), session: AsyncSession = Depends(get_session)):
+    """Where the driver is now, and the route so far. Available from the start code to the end code."""
+    return await trips.track(session, await _own_booking(session, booking_id, caller))
+
+
+@router.post("/{booking_id}/cancel", response_model=CustomerBookingOut)
 async def cancel(
     booking_id: str,
     body: CancelIn,

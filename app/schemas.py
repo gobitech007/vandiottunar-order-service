@@ -48,6 +48,46 @@ class AssignIn(BaseModel):
     driver_user_id: str = Field(min_length=1, max_length=36)
 
 
+class TripCodeIn(BaseModel):
+    code: str = Field(pattern=r"^\s*\d{4}\s*$")
+    # Where the driver is when starting/ending (optional, recorded on the trip)
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lng: float | None = Field(default=None, ge=-180, le=180)
+
+
+class LocationPoint(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracy_m: float | None = Field(default=None, ge=0, le=100_000)
+    speed_mps: float | None = Field(default=None, ge=0, le=150)
+    heading: float | None = Field(default=None, ge=0, le=360)
+    recorded_at: datetime | None = None  # when the phone took the reading (sent in batches after a network drop)
+
+
+class LocationBatch(BaseModel):
+    points: list[LocationPoint] = Field(min_length=1, max_length=200)
+
+
+class TrackPoint(BaseModel):
+    lat: float
+    lng: float
+    recorded_at: datetime
+    accuracy_m: float | None = None
+
+
+class TrackOut(BaseModel):
+    booking_id: str
+    status: BookingStatus
+    started_at: datetime | None
+    completed_at: datetime | None
+    distance_km: float
+    last: TrackPoint | None
+    path: list[tuple[float, float]]
+    pickup_lat: float | None
+    pickup_lng: float | None
+    driver_name: str | None
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,8 +109,19 @@ class BookingOut(BaseModel):
     driver_name: str | None
     driver_phone: str | None
     assigned_at: datetime | None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    distance_m: float = 0.0
+    last_location_at: datetime | None = None
     cancel_reason: str | None
     created_at: datetime
+
+
+class CustomerBookingOut(BookingOut):
+    """What the customer sees, including the codes they read out to the driver."""
+
+    start_code: str | None = None
+    end_code: str | None = None
 
 
 class DriverBookingOut(BookingOut):
@@ -88,7 +139,6 @@ class AdminBookingOut(DriverBookingOut):
     driver_id: str | None
     assignment_mode: str | None
     cancelled_by: str | None
-    completed_at: datetime | None
 
 
 class BookingList(BaseModel):

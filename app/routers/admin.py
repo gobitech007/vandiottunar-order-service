@@ -14,8 +14,10 @@ from app.schemas import (
     CancelIn,
     CandidateOut,
     SummaryOut,
+    TrackOut,
 )
 from app.services import bookings as svc
+from app.services import trips
 from app.services.matching import Candidate
 
 router = APIRouter(prefix="/admin/bookings", tags=["admin"])
@@ -187,3 +189,8 @@ async def cancel(
 @router.post("/{booking_id}/complete", response_model=AdminBookingOut)
 async def complete(booking_id: str, caller: Caller = Depends(admin_only), session: AsyncSession = Depends(get_session)):
     return await svc.complete(session, await _booking(session, booking_id), caller)
+
+
+@router.get("/{booking_id}/track", response_model=TrackOut)
+async def track(booking_id: str, _: Caller = Depends(admin_only), session: AsyncSession = Depends(get_session)):
+    return await trips.track(session, await _booking(session, booking_id))

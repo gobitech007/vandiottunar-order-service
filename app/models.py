@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Float, Index, String, Text
+from sqlalchemy import DateTime, Enum, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -31,11 +31,13 @@ class VehicleClass(str, enum.Enum):
 class BookingStatus(str, enum.Enum):
     pending = "pending"  # waiting for a driver
     assigned = "assigned"
+    in_progress = "in_progress"  # driver entered the customer's start code
     completed = "completed"
     cancelled = "cancelled"
 
 
-ACTIVE_STATUSES = (BookingStatus.pending, BookingStatus.assigned)
+ACTIVE_STATUSES = (BookingStatus.pending, BookingStatus.assigned)  # can still be cancelled
+BUSY_STATUSES = (BookingStatus.assigned, BookingStatus.in_progress)  # driver is taken
 
 
 class Booking(Base):
@@ -82,6 +84,20 @@ class Booking(Base):
     cancelled_by: Mapped[str | None] = mapped_column(String(16))  # customer | admin
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Trip: the customer reads a 4-digit code to the driver to start, and another to end
+    start_code: Mapped[str | None] = mapped_column(String(4))
+    end_code: Mapped[str | None] = mapped_column(String(4))
+    code_attempts: Mapped[int] = mapped_column(Integer, default=0)  # wrong tries on the current code
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Live location while the trip runs (latest point; the whole path is in booking_locations)
+    last_lat: Mapped[float | None] = mapped_column(Float)
+    last_lng: Mapped[float | None] = mapped_column(Float)
+    last_accuracy_m: Mapped[float | None] = mapped_column(Float)
+    last_location_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Reference point for adding up distance (last_lat/lng) is the last real move, taken at this time
+    distance_ref_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    distance_m: Mapped[float] = mapped_column(Float, default=0.0)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -97,4 +113,21 @@ class BookingEvent(Base):
     actor_role: Mapped[str] = mapped_column(String(16))
     action: Mapped[str] = mapped_column(String(24))
     note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class BookingLocation(Base):
+    """A GPS point sent by the driver's phone between the start and end codes."""
+
+    __tablename__ = "booking_locations"
+    __table_args__ = (Index("ix_booking_locations_booking_time", "booking_id", "recorded_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    booking_id: Mapped[str] = mapped_column(String(36))
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    accuracy_m: Mapped[float | None] = mapped_column(Float)
+    speed_mps: Mapped[float | None] = mapped_column(Float)
+    heading: Mapped[float | None] = mapped_column(Float)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # when the phone took the reading
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -12,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.config import get_settings
 from app.core.users import DriverInfo
-from app.models import Booking, BookingType, VehicleClass
-from app.timeutil import as_utc
+from app.models import Booking, BookingStatus, BookingType, VehicleClass
+from app.timeutil import as_utc, utcnow
 
 FAR_FUTURE = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
@@ -28,6 +28,10 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 def window(b: Booking) -> tuple[datetime, datetime]:
     """The time a booking blocks its driver. A permanent job with no end blocks indefinitely."""
     start = as_utc(b.start_at)
+    if b.status == BookingStatus.in_progress:
+        # A running trip keeps its driver until the end code is entered, even past the booked end
+        planned = as_utc(b.end_at) if b.end_at else (FAR_FUTURE if b.booking_type == BookingType.job else start + timedelta(hours=get_settings().default_trip_hours))
+        return min(start, utcnow()), max(planned, utcnow() + timedelta(hours=1))
     if b.end_at is not None:
         return start, as_utc(b.end_at)
     if b.booking_type == BookingType.job:
