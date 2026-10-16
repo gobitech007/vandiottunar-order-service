@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from tests.conftest import ADMIN, BUSINESS, CHENNAI, CUSTOMER, GANDHIPURAM, driver, future, token
+from tests.conftest import ADMIN, BUSINESS, CHENNAI, CUSTOMER, GANDHIPURAM, SERVICE, driver, future, token
 
 pytestmark = pytest.mark.asyncio
 
@@ -142,8 +142,15 @@ async def test_cancel_and_complete(client, directory):
     # Can't start a trip that is a day away
     r = await client.post(f"/driver/bookings/{b['id']}/start", json={"code": "0000"}, headers=token("d-1", "driver"))
     assert r.status_code == 409
+    # A driver is assigned, so cancelling costs ₹49: paid through the payment-service, which then cancels
     r = await client.post(f"/bookings/{b['id']}/cancel", json={"reason": "Plans changed"}, headers=CUSTOMER)
+    assert r.status_code == 402 and "₹49" in r.text
+    assert (await client.get(f"/bookings/{b['id']}", headers=CUSTOMER)).json()["cancellation_fee_paise"] == 4900
+    r = await client.post(f"/internal/bookings/{b['id']}/cancel-paid", json={"payment_id": "pay_c", "amount_paise": 4900}, headers=SERVICE)
     assert r.json()["status"] == "cancelled"
+    view = (await client.get(f"/bookings/{b['id']}", headers=CUSTOMER)).json()
+    assert view["status"] == "cancelled" and view["cancel_fee_status"] == "paid" and view["cancel_fee_paise"] == 4900
+    assert view["cancellation_fee_paise"] == 0
     assert (await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)).status_code == 409
     # Cancelled bookings no longer show on the driver's list or block them
     assert (await client.get("/driver/bookings", headers=token("d-1", "driver"))).json() == []
@@ -162,3 +169,35 @@ async def test_unknown_or_inactive_customer(client, directory):
     directory.users["cust-1"].is_active = False
     assert (await book(client)).status_code == 403
     assert (await book(client, token("ghost", "customer"))).status_code == 403
+
+
+async def test_cancellation_fee_rules(client, directory, monkeypatch):
+    from app.core.config import get_settings
+
+    # Free while we're still finding a driver
+    b = (await book(client)).json()
+    assert b["cancellation_fee_paise"] == 0
+    assert (await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)).json()["status"] == "cancelled"
+
+    policy = (await client.get("/bookings/policy")).json()
+    assert policy == {"confirmation_fee_paise": 100, "cancellation_fee_paise": 4900, "cancellation_fee_applies": "assigned"}
+
+    # "always": even a pending booking costs the fee; "never": assigned is free
+    monkeypatch.setattr(get_settings(), "cancellation_fee_applies", "always")
+    b = (await book(client)).json()
+    assert (await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)).status_code == 402
+    directory.drivers = [driver("d-1", "Murugan")]
+    await client.post(f"/admin/bookings/{b['id']}/auto-assign", headers=ADMIN)
+    monkeypatch.setattr(get_settings(), "cancellation_fee_applies", "never")
+    assert (await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)).status_code == 200
+
+    # Admin cancellations never charge the customer
+    monkeypatch.setattr(get_settings(), "cancellation_fee_applies", "always")
+    b = (await book(client)).json()
+    assert (await client.post(f"/admin/bookings/{b['id']}/cancel", json={"reason": "duplicate"}, headers=ADMIN)).status_code == 200
+
+
+async def test_policy_must_be_accepted_to_book(client, directory):
+    directory.users["cust-1"].policy_accepted = False
+    r = await book(client)
+    assert r.status_code == 422 and "policy" in r.text

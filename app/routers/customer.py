@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.core.users import UserDirectory, get_directory
 from app.db import get_session
 from app.models import Booking
-from app.schemas import BookingCreate, CancelIn, CustomerBookingOut, TrackOut
+from app.schemas import BookingCreate, CancelIn, CustomerBookingOut, PolicyOut, TrackOut
 from app.services import bookings as svc
 from app.services import chat, trips
 
@@ -20,6 +20,7 @@ def _out(b: Booking) -> CustomerBookingOut:
     if not chat.is_confirmed(b):
         out.start_code = None  # the trip can only start once the booking is confirmed
     out.chat_url = chat.chat_url(b, "customer")
+    out.cancellation_fee_paise = svc.cancellation_fee(b)
     return out
 
 
@@ -28,6 +29,17 @@ async def _own_booking(session: AsyncSession, booking_id: str, caller: Caller) -
     if booking is None or booking.customer_user_id != caller.user_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Booking not found")
     return booking
+
+
+@router.get("/policy", response_model=PolicyOut)
+async def policy():
+    """Fees shown in the booking policy (no login needed)."""
+    s = get_settings()
+    return PolicyOut(
+        confirmation_fee_paise=s.confirmation_fee_paise,
+        cancellation_fee_paise=s.cancellation_fee_paise,
+        cancellation_fee_applies=s.cancellation_fee_applies,
+    )
 
 
 @router.post("", response_model=CustomerBookingOut, status_code=status.HTTP_201_CREATED)
@@ -77,4 +89,11 @@ async def cancel(
     session: AsyncSession = Depends(get_session),
 ):
     booking = await _own_booking(session, booking_id, caller)
+    fee = svc.cancellation_fee(booking)
+    if fee:
+        # Cancelling now has a fee: the customer pays it through the payment-service, which then cancels
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            f"Cancelling now has a ₹{fee / 100:g} cancellation fee. Pay it to cancel the booking.",
+        )
     return _out(await svc.cancel(session, booking, caller, "customer", body.reason))

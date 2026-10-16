@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tests.conftest import ADMIN, CUSTOMER, RS_PURAM, driver, pay, token
+from tests.conftest import ADMIN, CUSTOMER, RS_PURAM, SERVICE, driver, pay, token
 
 pytestmark = pytest.mark.asyncio
 DRIVER = token("d-1", "driver")
@@ -66,8 +66,10 @@ async def test_full_trip_with_codes_and_tracking(client, directory):
     assert len(t["path"]) == 4 and t["driver_name"] == "Murugan"
     assert (await client.get(f"/admin/bookings/{b['id']}/track", headers=ADMIN)).json()["distance_km"] == t["distance_km"]
 
-    # A running trip keeps the driver busy and can't be cancelled by the customer
+    # A running trip keeps the driver busy and can't be cancelled by the customer (not even by paying the fee)
     assert (await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)).status_code == 409
+    r = await client.post(f"/internal/bookings/{b['id']}/cancel-paid", json={"payment_id": "p", "amount_paise": 4900}, headers=SERVICE)
+    assert r.status_code == 409 and "refund" in r.text
 
     r = await client.post(f"/driver/bookings/{b['id']}/end", json={"code": b["end_code"]}, headers=DRIVER)
     assert r.status_code == 200 and r.json()["status"] == "completed" and r.json()["completed_at"]

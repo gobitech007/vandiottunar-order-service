@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Booking confirmation: the customer pays this (in paise) to see and chat with the driver
     confirmation_fee_paise: int = 100
     require_payment: bool = True
+    # Customer cancellation fee (paise; 4900 = ₹49). When it applies:
+    #   assigned = once a driver is assigned (cancelling while we look for a driver is free)
+    #   always   = every customer cancellation;  never = no fee
+    cancellation_fee_paise: int = 4900
+    cancellation_fee_applies: str = "assigned"
 
     # Public address of this service (chat links point here; WhatsApp calls the webhook here)
     public_url: str = "http://localhost:8001"

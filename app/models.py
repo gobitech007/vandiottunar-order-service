@@ -82,6 +82,10 @@ class Booking(Base):
 
     cancel_reason: Mapped[str | None] = mapped_column(String(300))
     cancelled_by: Mapped[str | None] = mapped_column(String(16))  # customer | admin
+    # Customer cancellation fee: none | paid (the payment-service cancelled the booking after payment)
+    cancel_fee_status: Mapped[str] = mapped_column(String(8), default="none")
+    cancel_fee_paise: Mapped[int] = mapped_column(Integer, default=0)
+    cancel_payment_id: Mapped[str | None] = mapped_column(String(64))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Booking confirmation payment (₹1 by default) — the driver's details stay hidden until it's paid

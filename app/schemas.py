@@ -126,6 +126,17 @@ class CustomerBookingOut(BookingOut):
     end_code: str | None = None
     fee_paise: int = 0
     chat_url: str | None = None
+    # What cancelling now costs (0 = free). Above 0, cancel by paying it through the payment-service
+    cancellation_fee_paise: int = 0
+    # After a paid cancellation: status "paid" and the amount paid
+    cancel_fee_status: str = "none"
+    cancel_fee_paise: int = 0
+
+
+class PolicyOut(BaseModel):
+    confirmation_fee_paise: int
+    cancellation_fee_paise: int
+    cancellation_fee_applies: str  # assigned | always | never
 
 
 class DriverBookingOut(BookingOut):
@@ -146,6 +157,9 @@ class AdminBookingOut(DriverBookingOut):
     payment_id: str | None = None
     assignment_mode: str | None
     cancelled_by: str | None
+    cancel_fee_status: str = "none"
+    cancel_fee_paise: int = 0
+    cancel_payment_id: str | None = None
 
 
 class BookingList(BaseModel):

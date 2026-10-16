@@ -10,7 +10,7 @@ from app.core.auth import Caller
 from app.core.config import get_settings
 from app.db import get_session
 from app.models import Booking, BookingStatus
-from app.services.bookings import event
+from app.services.bookings import cancel, cancellation_fee, event
 
 
 async def require_service(x_service_token: str | None = Header(default=None)) -> None:
@@ -33,6 +33,7 @@ class InternalBooking(BaseModel):
     status: BookingStatus
     payment_status: str
     fee_paise: int
+    cancel_fee_paise: int
     driver_name: str | None
 
 
@@ -51,6 +52,7 @@ def _out(b: Booking) -> InternalBooking:
         status=b.status,
         payment_status=b.payment_status,
         fee_paise=get_settings().confirmation_fee_paise,
+        cancel_fee_paise=cancellation_fee(b),
         driver_name=b.driver_name,
     )
 
@@ -82,4 +84,23 @@ async def mark_paid(booking_id: str, body: PaidIn, session: AsyncSession = Depen
     b.paid_at = utcnow()
     event(session, b, Caller(user_id="payment-service", role="system"), "paid", f"₹{body.amount_paise / 100:g} · {body.payment_id}")
     await session.commit()
+    return _out(b)
+
+
+@router.post("/{booking_id}/cancel-paid", response_model=InternalBooking)
+async def cancel_paid(booking_id: str, body: PaidIn, session: AsyncSession = Depends(get_session)):
+    """The customer paid the cancellation fee: cancel the booking. Safe to call more than once."""
+    b = await _get(session, booking_id)
+    if b.cancel_fee_status == "paid":
+        return _out(b)
+    if b.status not in (BookingStatus.pending, BookingStatus.assigned):
+        # e.g. the trip started while they were paying: the admin refunds the fee
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Booking is {b.status.value}; refund the cancellation fee")
+    b.cancel_fee_status = "paid"
+    b.cancel_fee_paise = body.amount_paise
+    b.cancel_payment_id = body.payment_id
+    await cancel(
+        session, b, Caller(user_id=b.customer_user_id, role="customer"), "customer",
+        f"Cancellation fee ₹{body.amount_paise / 100:g} paid ({body.payment_id})",
+    )
     return _out(b)

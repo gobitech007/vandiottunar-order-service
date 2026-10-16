@@ -43,6 +43,7 @@ class UserInfo:
     home_pincode: str | None = None
     home_area: str | None = None
     car_number: str | None = None
+    policy_accepted: bool = True  # customers must accept the booking & cancellation policy
 
 
 class UserDirectory:

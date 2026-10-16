@@ -41,6 +41,8 @@ async def create_booking(session: AsyncSession, caller: Caller, body: BookingCre
     user = await directory.user(caller.user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Your account is not active. Contact support.")
+    if not user.policy_accepted:
+        raise HTTPException(422, "Please accept the booking & cancellation policy in your details first.")
 
     now = utcnow()
     start = local_to_utc(body.start_at)
@@ -211,6 +213,18 @@ async def unassign(session: AsyncSession, booking: Booking, actor: Caller, note:
     await chat.close_session(session, booking, "The driver for this booking has changed.")
     await session.commit()
     return booking
+
+
+def cancellation_fee(booking: Booking) -> int:
+    """Paise the customer pays to cancel this booking now (0 = free)."""
+    s = get_settings()
+    if booking.status not in ACTIVE_STATUSES or s.cancellation_fee_paise <= 0:
+        return 0
+    if s.cancellation_fee_applies == "always":
+        return s.cancellation_fee_paise
+    if s.cancellation_fee_applies == "assigned" and booking.status == BookingStatus.assigned:
+        return s.cancellation_fee_paise
+    return 0
 
 
 async def cancel(session: AsyncSession, booking: Booking, actor: Caller, by: str, reason: str | None) -> Booking:

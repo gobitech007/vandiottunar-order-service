@@ -89,8 +89,8 @@ async def test_chat_link_and_relay(client, directory):
     msgs = (await client.get(f"/admin/bookings/{b['id']}/chat", headers=ADMIN)).json()
     assert [m["sender"] for m in msgs] == ["customer", "customer", "driver", "driver"]
 
-    # Cancelling closes the chat; link and PIN stop working
-    await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)
+    # Cancelling (after paying the cancellation fee) closes the chat; link and PIN stop working
+    await client.post(f"/internal/bookings/{b['id']}/cancel-paid", json={"payment_id": "pay_c", "amount_paise": 4900}, headers=SERVICE)
     assert (await client.get(f"/chat/{token_part}", follow_redirects=False)).status_code == 410
     out = (await client.post("/whatsapp/dev/inbound", json={"from_phone": CUSTOMER_PHONE, "text": "hello?"})).json()
     assert "open the WhatsApp link" in out[0]["text"]
