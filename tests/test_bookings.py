@@ -180,7 +180,11 @@ async def test_cancellation_fee_rules(client, directory, monkeypatch):
     assert (await client.post(f"/bookings/{b['id']}/cancel", json={}, headers=CUSTOMER)).json()["status"] == "cancelled"
 
     policy = (await client.get("/bookings/policy")).json()
-    assert policy == {"confirmation_fee_paise": 100, "cancellation_fee_paise": 4900, "cancellation_fee_applies": "assigned"}
+    assert {k: policy[k] for k in ("confirmation_fee_paise", "cancellation_fee_paise", "cancellation_fee_applies")} == {
+        "confirmation_fee_paise": 100,
+        "cancellation_fee_paise": 4900,
+        "cancellation_fee_applies": "assigned",
+    }
 
     # "always": even a pending booking costs the fee; "never": assigned is free
     monkeypatch.setattr(get_settings(), "cancellation_fee_applies", "always")

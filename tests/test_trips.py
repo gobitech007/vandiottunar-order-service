@@ -77,6 +77,10 @@ async def test_full_trip_with_codes_and_tracking(client, directory):
     t = (await client.get(f"/bookings/{b['id']}/track", headers=CUSTOMER)).json()
     assert t["status"] == "completed" and t["completed_at"]
 
+    # After the trip the fare uses the real time (a few seconds → the 1-hour minimum, 10% first-booking discount)
+    fare = (await client.get(f"/bookings/{b['id']}", headers=CUSTOMER)).json()["fare"]
+    assert (fare["basis"], fare["hours"], fare["total_paise"]) == ("actual", 1, 13500)
+
 
 async def test_too_many_wrong_codes_changes_the_code(client, directory):
     b = await assigned_booking(client, directory)

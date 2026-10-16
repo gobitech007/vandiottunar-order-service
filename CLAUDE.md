@@ -21,6 +21,7 @@ app/
   services/matching.py  eligibility (approved, licence covers vehicle, work preference, no overlap) + ranking (service radius, distance, pincode, load)
   services/bookings.py  create/assign (per-driver lock + pg advisory lock), unassign, cancel, admin complete
   services/trips.py     start/end codes (4 digits, attempt limit then new code), GPS points + distance, track view
+  services/fares.py     fare: ₹150/h, ₹1000 per 8 h day (extra hours hourly, capped at a day), 10% off a new customer's first booking
   services/chat.py      encrypted links (Fernet key derived from JWT_SECRET), PINs, inbound routing, forwarding, close on trip end/cancel/unassign
   purge_locations.py    deletes GPS points and chat messages older than LOCATION_KEEP_DAYS (run daily)
 ```
@@ -51,6 +52,7 @@ Local chat test (console WhatsApp): `POST /whatsapp/dev/inbound {"from_phone": "
 - Trip start/end codes; live location (web + Android background) with route and distance; admin "On a trip".
 - ₹1 confirmation gate (payment-service), driver contact hidden from customers; encrypted WhatsApp chat link + PIN; WhatsApp Cloud API relay; admin chat transcript and "confirm without payment".
 - ₹49 customer cancellation fee once a driver is assigned (configurable), paid via the payment-service (`/internal/bookings/{id}/cancel-paid`); `GET /bookings/policy`; bookings need the accepted policy.
+- Driver fare: ₹150/h, ₹1000 per 8 h day, 10% off a new customer's first booking; `rates`/`fare` on every booking output; `GET /bookings/policy` includes the rates.
 
 ## Vandi Ottunar: the whole project
 
@@ -78,6 +80,7 @@ Domain: vandiottunar.in. Owner: Gobinath (gobitech007). Brand: green `#0E3B2E`, 
   - payment-service → order-service: `GET /internal/bookings/{id}` (incl. `fee_paise`, `cancel_fee_paise`), `POST /internal/bookings/{id}/paid` (₹1 confirmation), `POST /internal/bookings/{id}/cancel-paid` (cancellation fee paid → cancel)
 - **Booking lifecycle** (order-service `BookingStatus`): `pending` → `assigned` (admin manual/auto) → *customer pays ₹1* (`payment_status` `unpaid` → `paid`/`waived`) → `in_progress` (driver enters customer's **start code**) → `completed` (driver enters **end code**), or `cancelled`.
 - **Cancellation fee**: customer cancellations cost `CANCELLATION_FEE_PAISE` (₹49) once a driver is assigned (`CANCELLATION_FEE_APPLIES=assigned|always|never`). The customer pays it through the payment-service (`POST /payments/booking/{id}/cancel`), which then cancels the booking. Admin cancellations are free. Public `GET /bookings/policy` (order-service) gives the fee amounts shown in the policy text.
+- **Driver fare** (order-service `services/fares.py`): trips cost `HOURLY_RATE_PAISE` ₹150/h and `DAILY_RATE_PAISE` ₹1000 per `DAILY_HOURS` 8 h day; hours beyond full days are hourly but never more than one more day (7 h = ₹1000); time rounds up to whole hours, minimum 1. A new customer's first booking (no earlier non-cancelled booking) gets `NEW_CUSTOMER_DISCOUNT_PCT` 10% off. Rates and discount are copied onto the booking. Bookings return `rates` and `fare` (`basis` planned = booked times, actual = start to end code); no end time → `rates` only; permanent jobs aren't priced. Customers see the fare in the ₹1 confirm box before paying (web + app). Fare is shown, not collected online.
 - **Booking & cancellation policy**: customers accept it at registration (user-service `CustomerProfile.policy_version`, `CUSTOMER_POLICY_VERSION`; bump it when the text changes and customers must accept again). The order-service refuses bookings from customers who haven't accepted it. Policy text lives in web `i18n.tsx` and mobile `i18n.ts` (`policyPoints`), in both languages.
 - **Privacy rules**: the customer never sees the driver's phone. After paying they get an encrypted WhatsApp link (`/chat/<Fernet token>`) that opens the business WhatsApp number with a 6-digit chat PIN; the relay forwards messages between registered numbers. Aadhaar: only the last 4 digits are stored. GPS points are accepted only between start and end codes and purged after 90 days.
 - **Payment return**: payment-service redirects to `WEB_URL/dashboard?booking=<id>&payment=paid|cancelled|failed` (web) or `vandiottunar://payment?booking=…&payment=…` (app). `cancelled` = cancellation fee paid and booking cancelled.

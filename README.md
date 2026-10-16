@@ -33,6 +33,17 @@ Eligible drivers are ranked by:
 
 **Auto-assign** gives the booking to the top eligible driver. **Manual assign** lets the admin pick anyone eligible; the same rules are re-checked before saving. Assignments lock per driver, so two admins can't double-book the same person at the same time.
 
+## Fare
+
+Trips (on-demand bookings) are priced at **₹150 per hour** and **₹1000 per 8-hour day** (`HOURLY_RATE_PAISE`, `DAILY_RATE_PAISE`, `DAILY_HOURS`):
+
+- Time is rounded up to whole hours, minimum 1 hour.
+- Each full 8 hours costs ₹1000; hours beyond that cost ₹150 each, but never more than one more day (7 hours = ₹1000, not ₹1050).
+- Examples: 4 h = ₹600 · 8 h = ₹1000 · 10 h = ₹1300 · 16 h = ₹2000.
+- A new customer's **first booking** gets **10% off** (`NEW_CUSTOMER_DISCOUNT_PCT`). "New" means no earlier booking that wasn't cancelled.
+
+Rates and the discount are copied onto the booking when it is made, so later price changes don't change it. Bookings return `rates` and `fare`: an estimate from the booked start and end (`basis: planned`), then the real fare from the start code to the end code (`basis: actual`). A trip with no end time has `rates` only. Permanent jobs aren't priced here.
+
 ## Run locally (Windows / PowerShell)
 
 1. In pgAdmin, create an empty database **`vandi_orders`** on the same PostgreSQL server as `vandi_users`.

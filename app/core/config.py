@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     #   always   = every customer cancellation;  never = no fee
     cancellation_fee_paise: int = 4900
     cancellation_fee_applies: str = "assigned"
+    # Driver fare for on-demand trips (paise). A full working day of DAILY_HOURS costs the day rate;
+    # extra hours cost the hourly rate (never more than one more day). Copied onto each booking when made.
+    hourly_rate_paise: int = 15000  # ₹150 per hour
+    daily_rate_paise: int = 100000  # ₹1000 per day
+    daily_hours: int = 8
+    new_customer_discount_pct: int = 10  # off a customer's first booking (0 = no discount)
 
     # Public address of this service (chat links point here; WhatsApp calls the webhook here)
     public_url: str = "http://localhost:8001"

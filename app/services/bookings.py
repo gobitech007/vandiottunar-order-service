@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,6 +61,14 @@ async def create_booking(session: AsyncSession, caller: Caller, body: BookingCre
     if not pincode:
         raise HTTPException(422, "Add the pickup pincode")
 
+    # New customer = no earlier booking that wasn't cancelled: their first booking gets the discount
+    earlier = await session.scalar(
+        select(func.count())
+        .select_from(Booking)
+        .where(Booking.customer_user_id == caller.user_id, Booking.status != BookingStatus.cancelled)
+    )
+    discount_pct = s.new_customer_discount_pct if not earlier else 0
+
     for _ in range(5):  # retry on the (very unlikely) reference clash
         booking = Booking(
             reference=new_reference(),
@@ -82,6 +90,10 @@ async def create_booking(session: AsyncSession, caller: Caller, body: BookingCre
             pickup_lng=body.pickup_lng,
             notes=body.notes,
             status=BookingStatus.pending,
+            rate_hourly_paise=s.hourly_rate_paise,
+            rate_daily_paise=s.daily_rate_paise,
+            rate_daily_hours=s.daily_hours,
+            discount_pct=discount_pct,
         )
         session.add(booking)
         try:

@@ -93,6 +93,12 @@ class Booking(Base):
     payment_id: Mapped[str | None] = mapped_column(String(64))  # payment-service id
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Fare rates copied from settings when the booking is made (see services/fares.py)
+    rate_hourly_paise: Mapped[int] = mapped_column(Integer, default=0)
+    rate_daily_paise: Mapped[int] = mapped_column(Integer, default=0)
+    rate_daily_hours: Mapped[int] = mapped_column(Integer, default=8)
+    discount_pct: Mapped[int] = mapped_column(Integer, default=0)  # new-customer discount on this booking
+
     # Trip: the customer reads a 4-digit code to the driver to start, and another to end
     start_code: Mapped[str | None] = mapped_column(String(4))
     end_code: Mapped[str | None] = mapped_column(String(4))
@@ -109,6 +115,24 @@ class Booking(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    # Read by the API schemas (BookingOut.rates / .fare)
+    @property
+    def rates(self) -> dict | None:
+        if self.booking_type != BookingType.on_demand or not self.rate_hourly_paise:
+            return None
+        return {
+            "hourly_rate_paise": self.rate_hourly_paise,
+            "daily_rate_paise": self.rate_daily_paise,
+            "daily_hours": self.rate_daily_hours,
+            "discount_pct": self.discount_pct,
+        }
+
+    @property
+    def fare(self):
+        from app.services.fares import booking_fare
+
+        return booking_fare(self)
 
 
 class BookingEvent(Base):

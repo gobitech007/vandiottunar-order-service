@@ -88,6 +88,31 @@ class TrackOut(BaseModel):
     driver_name: str | None
 
 
+class FareOut(BaseModel):
+    """Driver fare. basis: planned (from the booked times) or actual (start code to end code)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    basis: str
+    hours: int
+    days: int
+    extra_hours: int
+    hourly_rate_paise: int
+    daily_rate_paise: int
+    daily_hours: int
+    subtotal_paise: int
+    discount_pct: int
+    discount_paise: int
+    total_paise: int
+
+
+class RatesOut(BaseModel):
+    hourly_rate_paise: int
+    daily_rate_paise: int
+    daily_hours: int
+    discount_pct: int  # on this booking (new customer)
+
+
 class BookingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -116,6 +141,9 @@ class BookingOut(BaseModel):
     last_location_at: datetime | None = None
     cancel_reason: str | None
     created_at: datetime
+    # Fare: rates always (on-demand trips); fare once there is an end time to price (estimate, then actual)
+    rates: RatesOut | None = None
+    fare: FareOut | None = None
 
 
 class CustomerBookingOut(BookingOut):
@@ -137,6 +165,10 @@ class PolicyOut(BaseModel):
     confirmation_fee_paise: int
     cancellation_fee_paise: int
     cancellation_fee_applies: str  # assigned | always | never
+    hourly_rate_paise: int
+    daily_rate_paise: int
+    daily_hours: int
+    new_customer_discount_pct: int
 
 
 class DriverBookingOut(BookingOut):

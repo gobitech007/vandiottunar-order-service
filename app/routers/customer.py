@@ -39,6 +39,10 @@ async def policy():
         confirmation_fee_paise=s.confirmation_fee_paise,
         cancellation_fee_paise=s.cancellation_fee_paise,
         cancellation_fee_applies=s.cancellation_fee_applies,
+        hourly_rate_paise=s.hourly_rate_paise,
+        daily_rate_paise=s.daily_rate_paise,
+        daily_hours=s.daily_hours,
+        new_customer_discount_pct=s.new_customer_discount_pct,
     )
 
 
