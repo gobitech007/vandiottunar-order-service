@@ -6,9 +6,15 @@ from app.core.auth import Caller, driver_only
 from app.db import get_session
 from app.models import Booking, BookingStatus
 from app.schemas import DriverBookingOut, LocationBatch, TripCodeIn
-from app.services import trips
+from app.services import chat, trips
 
 router = APIRouter(prefix="/driver/bookings", tags=["driver"])
+
+
+def _out(b: Booking) -> DriverBookingOut:
+    out = DriverBookingOut.model_validate(b)
+    out.chat_url = chat.chat_url(b, "driver")
+    return out
 
 
 async def _mine(session: AsyncSession, booking_id: str, caller: Caller) -> Booking:
@@ -30,7 +36,7 @@ async def my_assignments(caller: Caller = Depends(driver_only), session: AsyncSe
         .order_by(Booking.start_at.desc())
         .limit(100)
     )
-    return rows.all()
+    return [_out(b) for b in rows.all()]
 
 
 @router.post("/{booking_id}/start", response_model=DriverBookingOut)
@@ -38,7 +44,7 @@ async def start_trip(
     booking_id: str, body: TripCodeIn, caller: Caller = Depends(driver_only), session: AsyncSession = Depends(get_session)
 ):
     """Start the trip with the 4-digit start code the customer reads out."""
-    return await trips.start(session, await _mine(session, booking_id, caller), caller, body.code, body.lat, body.lng)
+    return _out(await trips.start(session, await _mine(session, booking_id, caller), caller, body.code, body.lat, body.lng))
 
 
 @router.post("/{booking_id}/end", response_model=DriverBookingOut)
@@ -46,7 +52,7 @@ async def end_trip(
     booking_id: str, body: TripCodeIn, caller: Caller = Depends(driver_only), session: AsyncSession = Depends(get_session)
 ):
     """Finish the trip with the customer's 4-digit end code."""
-    return await trips.end(session, await _mine(session, booking_id, caller), caller, body.code, body.lat, body.lng)
+    return _out(await trips.end(session, await _mine(session, booking_id, caller), caller, body.code, body.lat, body.lng))
 
 
 @router.post("/{booking_id}/location", status_code=status.HTTP_204_NO_CONTENT)

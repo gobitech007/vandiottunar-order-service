@@ -17,6 +17,7 @@ from app.core.auth import Caller
 from app.core.config import get_settings
 from app.models import Booking, BookingLocation, BookingStatus
 from app.schemas import LocationPoint, TrackOut, TrackPoint
+from app.services import chat
 from app.services.bookings import event
 from app.services.matching import haversine_km
 from app.timeutil import as_utc, utcnow
@@ -71,6 +72,8 @@ def _note_position(booking: Booking, lat: float | None, lng: float | None) -> st
 async def start(session: AsyncSession, booking: Booking, caller: Caller, code: str, lat: float | None, lng: float | None) -> Booking:
     if booking.status != BookingStatus.assigned:
         raise HTTPException(status.HTTP_409_CONFLICT, f"This booking is {booking.status.value}, it can't be started")
+    if not chat.is_confirmed(booking):
+        raise HTTPException(status.HTTP_409_CONFLICT, "The customer hasn't confirmed this booking yet (₹1 payment). You'll see it here when they do.")
     earliest = as_utc(booking.start_at) - timedelta(minutes=get_settings().start_early_minutes)
     if utcnow() < earliest:
         raise HTTPException(status.HTTP_409_CONFLICT, "It's too early to start this trip")
@@ -100,6 +103,7 @@ async def end(session: AsyncSession, booking: Booking, caller: Caller, code: str
     booking.completed_at = now
     booking.end_code = None
     event(session, booking, caller, "completed", _note_position(booking, lat, lng))
+    await chat.close_session(session, booking, "The trip has ended. Thank you for riding with Vandi Ottunar.")
     await session.commit()
     return booking
 

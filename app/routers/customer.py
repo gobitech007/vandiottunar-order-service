@@ -9,9 +9,18 @@ from app.db import get_session
 from app.models import Booking
 from app.schemas import BookingCreate, CancelIn, CustomerBookingOut, TrackOut
 from app.services import bookings as svc
-from app.services import trips
+from app.services import chat, trips
 
 router = APIRouter(prefix="/bookings", tags=["customer bookings"])
+
+
+def _out(b: Booking) -> CustomerBookingOut:
+    out = CustomerBookingOut.model_validate(b)
+    out.fee_paise = get_settings().confirmation_fee_paise
+    if not chat.is_confirmed(b):
+        out.start_code = None  # the trip can only start once the booking is confirmed
+    out.chat_url = chat.chat_url(b, "customer")
+    return out
 
 
 async def _own_booking(session: AsyncSession, booking_id: str, caller: Caller) -> Booking:
@@ -31,7 +40,7 @@ async def create(
     booking = await svc.create_booking(session, caller, body, directory)
     if get_settings().auto_assign_on_create:
         booking, _ = await svc.auto_assign(session, booking, Caller(user_id="system", role="system"), directory)
-    return booking
+    return _out(booking)
 
 
 @router.get("", response_model=list[CustomerBookingOut])
@@ -43,7 +52,7 @@ async def my_bookings(caller: Caller = Depends(customer_only), session: AsyncSes
     ).all()
     if any([trips.ensure_start_code(b) for b in rows]):
         await session.commit()
-    return rows
+    return [_out(b) for b in rows]
 
 
 @router.get("/{booking_id}", response_model=CustomerBookingOut)
@@ -51,7 +60,7 @@ async def get_one(booking_id: str, caller: Caller = Depends(customer_only), sess
     booking = await _own_booking(session, booking_id, caller)
     if trips.ensure_start_code(booking):
         await session.commit()
-    return booking
+    return _out(booking)
 
 
 @router.get("/{booking_id}/track", response_model=TrackOut)
@@ -68,4 +77,4 @@ async def cancel(
     session: AsyncSession = Depends(get_session),
 ):
     booking = await _own_booking(session, booking_id, caller)
-    return await svc.cancel(session, booking, caller, "customer", body.reason)
+    return _out(await svc.cancel(session, booking, caller, "customer", body.reason))

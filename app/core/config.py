@@ -32,6 +32,26 @@ class Settings(BaseSettings):
     code_max_attempts: int = 5  # wrong trip codes before the code is changed
     location_keep_days: int = 90  # GPS points older than this are deleted (python -m app.purge_locations)
 
+    # Booking confirmation: the customer pays this (in paise) to see and chat with the driver
+    confirmation_fee_paise: int = 100
+    require_payment: bool = True
+
+    # Public address of this service (chat links point here; WhatsApp calls the webhook here)
+    public_url: str = "http://localhost:8001"
+
+    # WhatsApp relay. console = messages are logged (development); cloud = Meta WhatsApp Cloud API
+    whatsapp_provider: str = "console"
+    whatsapp_business_number: str = "919999999999"  # your WhatsApp Business number, digits only with country code
+    whatsapp_phone_number_id: str = ""  # Cloud API: the number's ID in Meta's WhatsApp Manager
+    whatsapp_access_token: str = ""  # Cloud API: permanent system-user token
+    whatsapp_app_secret: str = ""  # Cloud API: app secret, checks the webhook's X-Hub-Signature-256
+    whatsapp_verify_token: str = ""  # any secret string, also entered in Meta when setting up the webhook
+    whatsapp_graph_version: str = "v21.0"
+    # Approved template used when the other person hasn't written to us in the last 24 hours.
+    # Body must have 3 variables: {{1}} booking ref, {{2}} sender ("Customer Priya"), {{3}} the message
+    whatsapp_relay_template: str = "booking_chat_message"
+    whatsapp_template_language: str = "en"
+
     cors_origins: str = "http://localhost:5173"
 
     @property
@@ -48,6 +68,12 @@ class Settings(BaseSettings):
                 raise RuntimeError("JWT_SECRET must match the user-service's long random secret in production")
             if len(self.service_token) < 32:
                 raise RuntimeError("SERVICE_TOKEN must be set to the user-service's long random value in production")
+            if self.whatsapp_provider == "cloud" and not (
+                self.whatsapp_phone_number_id and self.whatsapp_access_token and self.whatsapp_app_secret and self.whatsapp_verify_token
+            ):
+                raise RuntimeError("WHATSAPP_* settings are required when WHATSAPP_PROVIDER=cloud")
+            if self.whatsapp_provider == "console":
+                raise RuntimeError("WHATSAPP_PROVIDER=console is not allowed in production")
 
 
 @lru_cache

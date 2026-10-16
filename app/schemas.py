@@ -107,8 +107,9 @@ class BookingOut(BaseModel):
     notes: str | None
     status: BookingStatus
     driver_name: str | None
-    driver_phone: str | None
     assigned_at: datetime | None
+    payment_status: str = "unpaid"  # unpaid | paid | waived
+    paid_at: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     distance_m: float = 0.0
@@ -118,10 +119,13 @@ class BookingOut(BaseModel):
 
 
 class CustomerBookingOut(BookingOut):
-    """What the customer sees, including the codes they read out to the driver."""
+    """What the customer sees. Never the driver's phone: they chat through the WhatsApp relay link,
+    which (like the start code) appears only after the booking fee is paid."""
 
     start_code: str | None = None
     end_code: str | None = None
+    fee_paise: int = 0
+    chat_url: str | None = None
 
 
 class DriverBookingOut(BookingOut):
@@ -130,6 +134,7 @@ class DriverBookingOut(BookingOut):
     customer_name: str | None
     customer_phone: str
     company_name: str | None
+    chat_url: str | None = None
 
 
 class AdminBookingOut(DriverBookingOut):
@@ -137,6 +142,8 @@ class AdminBookingOut(DriverBookingOut):
     customer_role: str
     driver_user_id: str | None
     driver_id: str | None
+    driver_phone: str | None
+    payment_id: str | None = None
     assignment_mode: str | None
     cancelled_by: str | None
 
@@ -176,3 +183,11 @@ class AutoAssignResult(BaseModel):
 
 class SummaryOut(BaseModel):
     by_status: dict[str, int]
+
+
+class ChatMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    sender: str
+    body: str
+    delivery: str
+    created_at: datetime

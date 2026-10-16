@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.db import Base, engine
-from app.routers import admin, customer, driver
+from app.routers import admin, chat, customer, driver, internal
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("vandi.orders")
@@ -49,6 +49,8 @@ app.add_middleware(
 app.include_router(customer.router)
 app.include_router(driver.router)
 app.include_router(admin.router)
+app.include_router(chat.router)
+app.include_router(internal.router)
 
 
 @app.get("/health", tags=["health"])

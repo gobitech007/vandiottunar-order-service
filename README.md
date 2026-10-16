@@ -95,3 +95,24 @@ The tests swap the user-service for an in-memory directory, so they run on their
 After `CODE_MAX_ATTEMPTS` wrong codes the code is replaced (the customer's screen shows the new one). An admin can finish a running trip without the code (`POST /admin/bookings/{id}/complete`) if the driver's phone dies. Run `python -m app.purge_locations` daily (cron / Task Scheduler) to delete GPS points older than `LOCATION_KEEP_DAYS`.
 
 Run `python -m alembic upgrade head` after pulling.
+
+## ₹1 confirmation and WhatsApp chat
+
+- After a driver is assigned, the customer sees only the driver's **name**. They pay ₹1 through the payment-service, which calls `POST /internal/bookings/{id}/paid`. Then the customer's booking shows the **start code** and a **WhatsApp chat link**; the driver can start the trip. Admins can *confirm without payment* (`POST /admin/bookings/{id}/waive-payment`). `REQUIRE_PAYMENT=false` switches the gate off.
+- The chat link (`/chat/<encrypted token>`) opens WhatsApp with your business number and a pre-filled message holding the booking reference and a 6-digit **chat PIN**. Nobody sees the other person's number.
+
+### WhatsApp relay
+
+Development (`WHATSAPP_PROVIDER=console`): outgoing messages are printed in this service's log. Pretend a message arrived:
+
+```powershell
+Invoke-RestMethod -Method Post http://localhost:8001/whatsapp/dev/inbound -ContentType application/json -Body '{"from_phone": "+919876543210", "text": "hi"}'
+```
+
+Going live (`WHATSAPP_PROVIDER=cloud`), Meta WhatsApp Cloud API:
+1. Meta Business account → verify the business → WhatsApp → add your business number → note the **Phone number ID**; create a **system user** permanent token with `whatsapp_business_messaging`.
+2. App settings → *Basic*: copy the **App secret**. WhatsApp → *Configuration*: webhook URL `https://<order-service domain>/whatsapp/webhook`, verify token = any secret you choose; subscribe to **messages**.
+3. WhatsApp Manager → *Message templates*: create a Utility template named `booking_chat_message`, language English, body with 3 variables, e.g. `Booking {{1}}: {{2}} says: {{3}} (reply here to answer)`. Wait for approval.
+4. Fill `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_BUSINESS_NUMBER`, `PUBLIC_URL` (HTTPS) and restart.
+
+Why the template: WhatsApp only allows free-form messages within 24 hours of the person's last message to you. The first message to a driver (or a reply after a quiet day) goes out as the template.

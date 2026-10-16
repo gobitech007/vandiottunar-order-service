@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.users import DriverInfo, UserDirectory
 from app.models import ACTIVE_STATUSES, BUSY_STATUSES, Booking, BookingEvent, BookingStatus, BookingType
 from app.schemas import BookingCreate
-from app.services import matching
+from app.services import chat, matching
 from app.timeutil import as_utc, local_to_utc, utcnow
 
 _REF_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O/1/I so it can be read over the phone
@@ -208,6 +208,7 @@ async def unassign(session: AsyncSession, booking: Booking, actor: Caller, note:
     booking.start_code = None  # the next driver gets a new code
     booking.code_attempts = 0
     event(session, booking, actor, "unassigned", note or f"was {previous}")
+    await chat.close_session(session, booking, "The driver for this booking has changed.")
     await session.commit()
     return booking
 
@@ -219,6 +220,7 @@ async def cancel(session: AsyncSession, booking: Booking, actor: Caller, by: str
     booking.cancelled_by = by
     booking.cancel_reason = reason
     event(session, booking, actor, "cancelled", reason)
+    await chat.close_session(session, booking, "This booking was cancelled.")
     await session.commit()
     return booking
 
@@ -233,5 +235,6 @@ async def complete(session: AsyncSession, booking: Booking, actor: Caller) -> Bo
     booking.completed_at = utcnow()
     booking.start_code = booking.end_code = None
     event(session, booking, actor, "completed", "by admin, without the end code")
+    await chat.close_session(session, booking, "The trip has ended.")
     await session.commit()
     return booking

@@ -9,6 +9,12 @@ os.environ.update(
         "DATABASE_URL": os.environ.get("TEST_DATABASE_URL", f"sqlite+aiosqlite:///{_tmp}/test.db"),
         "JWT_SECRET": "test-secret-that-is-long-enough-for-hs256-0123456789",
         "AUTO_ASSIGN_ON_CREATE": "false",
+        "SERVICE_TOKEN": "test-service-token-0123456789abcdef0123",
+        "WHATSAPP_PROVIDER": "console",
+        "WHATSAPP_BUSINESS_NUMBER": "919000011111",
+        "WHATSAPP_APP_SECRET": "test-app-secret",
+        "WHATSAPP_VERIFY_TOKEN": "test-verify",
+        "PUBLIC_URL": "http://test",
     }
 )
 
@@ -123,3 +129,12 @@ def future(days: int = 1, hour: int = 9) -> str:
     """A local (India time) date-time string, as a browser form would send it."""
     d = (datetime.now() + timedelta(days=days)).replace(hour=hour, minute=0, second=0, microsecond=0)
     return d.strftime("%Y-%m-%dT%H:%M")
+
+
+SERVICE = {"X-Service-Token": "test-service-token-0123456789abcdef0123"}
+
+
+async def pay(client, booking_id: str) -> None:
+    """What the payment-service does after a successful ₹1 payment."""
+    r = await client.post(f"/internal/bookings/{booking_id}/paid", json={"payment_id": "pay_test", "amount_paise": 100}, headers=SERVICE)
+    assert r.status_code == 200, r.text

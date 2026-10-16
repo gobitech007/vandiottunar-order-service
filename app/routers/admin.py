@@ -14,10 +14,12 @@ from app.schemas import (
     CancelIn,
     CandidateOut,
     SummaryOut,
+    ChatMessageOut,
     TrackOut,
 )
 from app.services import bookings as svc
-from app.services import trips
+from app.services import chat, trips
+from app.services.bookings import event
 from app.services.matching import Candidate
 
 router = APIRouter(prefix="/admin/bookings", tags=["admin"])
@@ -194,3 +196,22 @@ async def complete(booking_id: str, caller: Caller = Depends(admin_only), sessio
 @router.get("/{booking_id}/track", response_model=TrackOut)
 async def track(booking_id: str, _: Caller = Depends(admin_only), session: AsyncSession = Depends(get_session)):
     return await trips.track(session, await _booking(session, booking_id))
+
+
+@router.post("/{booking_id}/waive-payment", response_model=AdminBookingOut)
+async def waive_payment(booking_id: str, caller: Caller = Depends(admin_only), session: AsyncSession = Depends(get_session)):
+    """Confirm a booking without the ₹1 payment (e.g. the customer paid in cash or a payment glitch)."""
+    booking = await _booking(session, booking_id)
+    if booking.payment_status != "unpaid":
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Payment is already {booking.payment_status}")
+    booking.payment_status = "waived"
+    event(session, booking, caller, "payment_waived")
+    await session.commit()
+    return booking
+
+
+@router.get("/{booking_id}/chat", response_model=list[ChatMessageOut])
+async def chat_messages(booking_id: str, _: Caller = Depends(admin_only), session: AsyncSession = Depends(get_session)):
+    """Messages relayed between the customer and driver (for support and disputes)."""
+    await _booking(session, booking_id)
+    return await chat.transcript(session, booking_id)

@@ -84,6 +84,11 @@ class Booking(Base):
     cancelled_by: Mapped[str | None] = mapped_column(String(16))  # customer | admin
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Booking confirmation payment (₹1 by default) — the driver's details stay hidden until it's paid
+    payment_status: Mapped[str] = mapped_column(String(16), default="unpaid")  # unpaid | paid | waived
+    payment_id: Mapped[str | None] = mapped_column(String(64))  # payment-service id
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Trip: the customer reads a 4-digit code to the driver to start, and another to end
     start_code: Mapped[str | None] = mapped_column(String(4))
     end_code: Mapped[str | None] = mapped_column(String(4))
@@ -130,4 +135,44 @@ class BookingLocation(Base):
     speed_mps: Mapped[float | None] = mapped_column(Float)
     heading: Mapped[float | None] = mapped_column(Float)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # when the phone took the reading
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ChatSession(Base):
+    """WhatsApp chat between a booking's customer and driver, relayed through the business number."""
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    booking_id: Mapped[str] = mapped_column(String(36), unique=True)
+    pin: Mapped[str] = mapped_column(String(6), index=True)  # in the pre-filled message; picks the booking
+    customer_wa: Mapped[str] = mapped_column(String(16))  # +91… registered numbers
+    driver_wa: Mapped[str] = mapped_column(String(16))
+    # Last message we received from each side: WhatsApp allows free-form replies for 24 hours after it
+    customer_last_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    driver_last_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatRoute(Base):
+    """Which chat a phone number is talking in right now (a driver may have several bookings)."""
+
+    __tablename__ = "chat_routes"
+
+    phone: Mapped[str] = mapped_column(String(16), primary_key=True)
+    session_id: Mapped[str] = mapped_column(String(36))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (Index("ix_chat_messages_session_time", "session_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    session_id: Mapped[str] = mapped_column(String(36))
+    sender: Mapped[str] = mapped_column(String(16))  # customer | driver | system
+    body: Mapped[str] = mapped_column(Text)
+    wa_message_id: Mapped[str | None] = mapped_column(String(128), unique=True)  # inbound id, to ignore repeats
+    delivery: Mapped[str] = mapped_column(String(16), default="sent")  # sent | template | failed
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

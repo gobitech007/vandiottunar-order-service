@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from tests.conftest import ADMIN, CUSTOMER, RS_PURAM, driver, token
+from tests.conftest import ADMIN, CUSTOMER, RS_PURAM, driver, pay, token
 
 pytestmark = pytest.mark.asyncio
 DRIVER = token("d-1", "driver")
@@ -18,6 +18,7 @@ async def assigned_booking(client, directory) -> dict:
     b = (await client.post("/bookings", json={"start_at": soon(), "pickup_lat": RS_PURAM[0], "pickup_lng": RS_PURAM[1]}, headers=CUSTOMER)).json()
     r = await client.post(f"/admin/bookings/{b['id']}/assign", json={"driver_user_id": "d-1"}, headers=ADMIN)
     assert r.status_code == 200, r.text
+    await pay(client, b["id"])
     return (await client.get(f"/bookings/{b['id']}", headers=CUSTOMER)).json()
 
 
@@ -107,4 +108,5 @@ async def test_unassign_gives_new_code(client, directory):
     await client.post(f"/admin/bookings/{b['id']}/unassign", json={}, headers=ADMIN)
     assert (await client.get(f"/bookings/{b['id']}", headers=CUSTOMER)).json()["start_code"] is None
     await client.post(f"/admin/bookings/{b['id']}/assign", json={"driver_user_id": "d-2"}, headers=ADMIN)
+    # Already paid, so the new driver's code shows straight away
     assert len((await client.get(f"/bookings/{b['id']}", headers=CUSTOMER)).json()["start_code"]) == 4
